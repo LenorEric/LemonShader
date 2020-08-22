@@ -1,43 +1,28 @@
 #version 120
+/* DRAWBUFFERS:7 */
+/*
+Sildur's vibrant shaders v1.17, before editing, remember the agreement you've accepted by downloading this shaderpack:
+http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/1291396-1-6-4-1-12-1-sildurs-shaders-pc-mac-intel
 
+You are allowed to:
+- Modify it for your own personal use only, so don't share it online.
 
-uniform sampler2D texture;
-uniform sampler2D lightmap;
+You are not allowed to:
+- Rename and/or modify this shaderpack and upload it with your own name on it.
+- Provide mirrors by reuploading my shaderpack, if you want to link it, use the link to my thread found above.
+- Copy and paste code or even whole files into your "own" shaderpack.
+*/
 
 varying vec4 color;
-varying vec4 texcoord;
-varying vec4 lmcoord;
+
+varying vec2 texcoord;
+varying float lmcoord;
+
+uniform sampler2D texture;
 
 void main() {
 
-	gl_FragData[0] = vec4(texture2D(texture, texcoord.st).rgb, texture2D(texture, texcoord.st).a * 1.0f) * color;
-	gl_FragData[1] = vec4(0.0f);
-	gl_FragData[2] = vec4(0.0f);
-	gl_FragData[3] = vec4(0.0f);
-		
-	
-	
-	
-	
-	
-	/*
-	//store lightmap in auxilliary texture. r = torch light. g = lightning. b = sky light.
-	
-	vec3 lightmaptorch = texture2D(lightmap, vec2(lmcoord.s, 0.00f)).rgb;
-	vec3 lightmapsky   = texture2D(lightmap, vec2(0.0f, lmcoord.t)).rgb;
-	
-	//vec4 lightmap = texture2D(lightmap, lmcoord.st);
-	vec4 lightmap = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	
-	//Separate lightmap types
-	lightmap.r = dot(lightmaptorch, vec3(1.0f));
-	lightmap.b = dot(lightmapsky, vec3(1.0f));
-	*/
-	
-	
-	
-	//gl_FragData[5] = vec4(lightmap.rgb, texture2D(texture, texcoord.st).a * color.a * 0.0f);
-	//gl_FragData[6] = vec4(0.0f, 0.0f, 1.0f, 0.0f);
-	//gl_FragData[7] = vec4(0.0f, 0.0f, 0.0f, 0.0f);
-		
+	vec4 tex = texture2D(texture, texcoord.xy)*color;
+
+	gl_FragData[0] = vec4(vec3(1.0,lmcoord,1.0),tex.a*length(tex.rgb)/1.732);
 }

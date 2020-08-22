@@ -1,60 +1,82 @@
 #version 120
+/* DRAWBUFFERS:56 */
+//Render hand, entities and particles in here, boost and fix enchanted armor effect in gbuffers_armor_glint
+/*
+Sildur's vibrant shaders v1.17, before editing, remember the agreement you've accepted by downloading this shaderpack:
+http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/1291396-1-6-4-1-12-1-sildurs-shaders-pc-mac-intel
 
-//clouds
+You are allowed to:
+- Modify it for your own personal use only, so don't share it online.
 
-uniform sampler2D texture;
+You are not allowed to:
+- Rename and/or modify this shaderpack and upload it with your own name on it.
+- Provide mirrors by reuploading my shaderpack, if you want to link it, use the link to my thread found above.
+- Copy and paste code or even whole files into your "own" shaderpack.
+*/
+#define MobsFlashRed
+
+#define Shadows
+#define SHADOW_MAP_BIAS 0.8
 
 varying vec4 color;
-varying vec4 texcoord;
-varying vec4 lmcoord;
-
+varying vec2 texcoord;
 varying vec3 normal;
+varying vec3 ambientNdotL;
+varying vec3 finalSunlight;
+varying float skyL;
 
-const int GL_LINEAR = 9729;
-const int GL_EXP = 2048;
+uniform mat4 gbufferProjectionInverse;
+uniform mat4 gbufferModelViewInverse;
 
-uniform int fogMode;
+uniform mat4 shadowProjection;
+uniform mat4 shadowModelView;
+
+uniform sampler2D texture;
+uniform sampler2DShadow shadow;
+
+uniform float viewWidth;
+uniform float viewHeight;
+uniform vec4 entityColor;
+uniform float rainStrength;
+
+uniform vec3 shadowLightPosition;
+uniform int worldTime;
+uniform ivec2 eyeBrightnessSmooth;
 
 void main() {
 
-	float fullalpha = (texture2D(texture, texcoord.st).a * color.a);
-
-	vec3 lightmap = vec3(0.0f);
-
-	lightmap.r = clamp((lmcoord.s * 33.05f / 32.0f) - 1.05f / 32.0f, 0.0f, 1.0f);
-	lightmap.b = clamp((lmcoord.t * 33.05f / 32.0f) - 1.05f / 32.0f, 0.0f, 1.0f);
-
-	lightmap.b = pow(lightmap.b, 7.0f);
-	lightmap.r = pow(lightmap.r, 2.0f);
-
-	if (fullalpha < 0.9f)
-	{
-		lightmap.r = 0.0f;
-		lightmap.b = 1.0f;
-	}
-
-	gl_FragData[0] = vec4(texture2D(texture, texcoord.st).rgb * color.rgb, fullalpha*2.0f);
-	gl_FragData[1] = vec4((29.0f + 0.1f) / 255.0f, lightmap.r, lightmap.b, 1.0f);
+	float diffuse = clamp(dot(normalize(shadowLightPosition),normal),0.0,1.0);
 	
+	vec4 albedo = texture2D(texture, texcoord.xy)*color;
+#ifdef MobsFlashRed
+	albedo.rgb = mix(albedo.rgb,entityColor.rgb,entityColor.a);
+#endif
 
+#ifdef Shadows
+//don't do shading if transparent/translucent (not opaque)
+if (diffuse > 0.0 && rainStrength < 0.9 && albedo.a > 0.01){
+vec4 fragposition = gbufferProjectionInverse*(vec4(gl_FragCoord.xy/vec2(viewWidth,viewHeight),gl_FragCoord.z,1.0)*2.0-1.0);
 	
-	float colormask = 0.0;
-	float coloraverage = (color.r + color.g + color.b)/3.0;
+vec4 worldposition = gbufferModelViewInverse * fragposition;
+	 worldposition = shadowModelView * worldposition;
+	 worldposition = shadowProjection * worldposition;
+	 worldposition /= worldposition.w;
 	
-	if (coloraverage == 1.0 && gl_FragCoord.z < 0.999) {
-		colormask = 1.0;
-	} else {
-		colormask = 0.0;
-	}
+	float distortion = ((1.0 - SHADOW_MAP_BIAS) + length(worldposition.xy * 1.165) * SHADOW_MAP_BIAS) * 0.97;
+	worldposition.xy /= distortion;
 	
-	float skymask;
-	
-	if (gl_FragCoord.z < 0.99f) {
-		skymask = 1.0f;
-	} else {
-		skymask = 0.0f;
-	}
-	
-	gl_FragData[2] = vec4(normal.rgb * vec3(0.5f) + vec3(0.5f), fullalpha);
-	//gl_FragData[3] = vec4(0.0f, 0.0, 0.0f, 1.0f);
+	float bias = distortion*distortion*(0.0015*tan(acos(diffuse)));
+	worldposition.xyz = worldposition.xyz * vec3(0.5,0.5,0.2) + vec3(0.5,0.5,0.5-bias);
+
+	//Fast and simple shadow drawing for proper rendering of entities etc
+	diffuse *= shadow2D(shadow, worldposition.xyz).x;
+	diffuse *= (1.0 - rainStrength);
+	diffuse *= mix(skyL,1.0,clamp((eyeBrightnessSmooth.y/255.0-2.0/16.)*4.0,0.0,1.0)); //avoid light leaking underground	
+}
+#endif
+
+	vec3 finalColor = pow(albedo.rgb,vec3(2.2)) * (finalSunlight*diffuse+ambientNdotL.rgb);
+
+	gl_FragData[0] = vec4(finalColor, albedo.a);
+	gl_FragData[1] = vec4(normalize(albedo.rgb+0.00001), albedo.a);		
 }

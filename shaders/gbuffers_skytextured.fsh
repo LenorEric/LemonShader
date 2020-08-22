@@ -1,51 +1,24 @@
 #version 120
+/* DRAWBUFFERS:4 */
+/*
+Sildur's vibrant shaders v1.17, before editing, remember the agreement you've accepted by downloading this shaderpack:
+http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/1291396-1-6-4-1-12-1-sildurs-shaders-pc-mac-intel
 
-//sun and moon
+You are allowed to:
+- Modify it for your own personal use only, so don't share it online.
 
-uniform sampler2D texture;
+You are not allowed to:
+- Rename and/or modify this shaderpack and upload it with your own name on it.
+- Provide mirrors by reuploading my shaderpack, if you want to link it, use the link to my thread found above.
+- Copy and paste code or even whole files into your "own" shaderpack.
+*/
 
 varying vec4 color;
-varying vec4 texcoord;
-
-const int GL_LINEAR = 9729;
-const int GL_EXP = 2048;
-
-/* DRAWBUFFERS:0 */
-
-uniform int fogMode;
-
-float Luminance(in vec3 color)
-{
-	return dot(color.rgb, vec3(0.3333f, 0.3333f, 0.3333f));
-}
+varying vec2 texcoord;
+uniform sampler2D texture;
 
 void main() {
 
-	vec4 tex = texture2D(texture, texcoord.st);
+	gl_FragData[0] = texture2D(texture,texcoord.xy)*color;
 
-	gl_FragData[0] = tex * color;
-
-	float matID = 0.0f;
-
-	// float texLum = Luminance(tex.rgb);
-
-	// if (texLum >= 0.6f) {
-	// 	matID = 11.0f;
-	// }
-
-	gl_FragData[1] = vec4(matID / 255.0f, 0.0f, 1.0f, 1.0);
-	
-	gl_FragData[2] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	gl_FragData[3] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	//gl_FragData[3] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-	//gl_FragData[6] = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-		
-		
-	if (fogMode == GL_EXP) {
-		gl_FragData[0].rgb = mix(gl_FragData[0].rgb, gl_Fog.color.rgb, 1.0 - clamp(exp(-gl_Fog.density * gl_FogFragCoord), 0.0, 1.0));
-	} else if (fogMode == GL_LINEAR) {
-		gl_FragData[0].rgb = mix(gl_FragData[0].rgb, gl_Fog.color.rgb, clamp((gl_FogFragCoord - gl_Fog.start) * gl_Fog.scale, 0.0, 1.0));
-	}
-	
-	//gl_FragData[7] = vec4(0.0f, 0.0f, 0.0f, 0.0f);
 }

@@ -1,53 +1,54 @@
 #version 120
+/*
+                            _____ _____ ___________ 
+                           /  ___|_   _|  _  | ___ \
+                           \ `--.  | | | | | | |_/ /
+                            `--. \ | | | | | |  __/ 
+                           /\__/ / | | \ \_/ / |    
+                           \____/  \_/  \___/\_|
+						Sildur's vibrant shaders v1.16 and newer
+						Before editing anything here make sure you've 
+						read The agreement, which you accepted by downloading
+						my shaderpack. The agreement can be found here:
+			http://www.minecraftforum.net/topic/1953873-164-172-sildurs-shaders-pcmacintel/
+						   
+				This code is from Chocapic13' shaders adapted, modified and tweaked by Sildur 
+		http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/1293898-chocapic13s-shaders			
+*/
+/*--------------------------------*/
+varying vec2 texcoord;
 
-#define OVERDRAW 1.0f
+varying vec2 rainPos1;
+varying vec2 rainPos2;
+varying vec2 rainPos3;
+varying vec2 rainPos4;
+varying vec4 weights;
 
-varying vec4 texcoord;
-
-uniform int worldTime;
-
-uniform vec3 sunPosition;
-uniform vec3 moonPosition;
-uniform vec3 upPosition;
+uniform ivec2 eyeBrightnessSmooth;
 uniform float rainStrength;
-uniform float sunAngle;
+uniform float frameTimeCounter;
+/*--------------------------------*/
 
-varying float timeSunrise;
-varying float timeNoon;
-varying float timeSunset;
-varying float timeMidnight;
-
-varying vec3 lightVector;
+vec2 noisepattern(vec2 pos) {
+	return vec2(abs(fract(sin(dot(pos, vec2(83147.6995379f, 125370.887575f))))));
+}
 
 void main() {
+
 	gl_Position = ftransform();
+	texcoord = (gl_MultiTexCoord0).xy;
 
-	if (sunAngle < 0.5) {
-		lightVector = normalize(sunPosition);
-	} else {
-		lightVector = normalize(moonPosition);
-	}
-	
-	float timePow = 3.0f;
-	float timefract = worldTime;
-	
-	timeSunrise  = ((clamp(sunAngle, 0.95, 1.0f)  - 0.95f) / 0.05f) + (1.0 - (clamp(sunAngle, 0.0, 0.25) / 0.25f));  
-	timeNoon     = ((clamp(sunAngle, 0.0, 0.25f)) 	       / 0.25f)  - (		 (clamp(sunAngle, 0.25f, 0.5f) - 0.25f) / 0.25f);
-	timeSunset   = ((clamp(sunAngle, 0.25f, 0.5f) - 0.25f) / 0.25f) - (		 (clamp(sunAngle, 0.5f, 0.52) - 0.5f) / 0.02f);  
-	timeMidnight = ((clamp(sunAngle, 0.5f, 0.52f) - 0.5f) / 0.02f)  - (		 (clamp(sunAngle, 0.95, 1.0) - 0.95f) / 0.05f);
-	
-	timeSunrise  = pow(timeSunrise, timePow);
-	timeNoon     = pow(timeNoon, 1.0f/timePow);
-	timeSunset   = pow(timeSunset, timePow);
-	timeMidnight = pow(timeMidnight, 1.0f/timePow);
-	
-	texcoord = gl_MultiTexCoord0;
-
-	// texcoord.st = texcoord.st * 2.0f - 1.0f;
-	// texcoord.st /= 2.0f;
-	// texcoord.st = texcoord.st * 0.5f + 0.5f;
-
-	// texcoord = texcoord * 2.0f - 1.0f;
-	// texcoord /= OVERDRAW;
-	// texcoord = texcoord * 0.5f + 0.5f;
+	//Rainlens
+	const float lifetime = 4.0;		//water drop lifetime in seconds
+	float ftime = frameTimeCounter*2.0/lifetime;  
+	vec2 drop = vec2(0.0,fract(frameTimeCounter/20.0));
+	rainPos1 = fract((noisepattern(vec2(-0.94386347*floor(ftime*0.5+0.25),floor(ftime*0.5+0.25))))*0.8+0.1 - drop);
+	rainPos2 = fract((noisepattern(vec2(0.9347*floor(ftime*0.5+0.5),-0.2533282*floor(ftime*0.5+0.5))))*0.8+0.1- drop);
+	rainPos3 = fract((noisepattern(vec2(0.785282*floor(ftime*0.5+0.75),-0.285282*floor(ftime*0.5+0.75))))*0.8+0.1- drop);
+	rainPos4 = fract((noisepattern(vec2(-0.347*floor(ftime*0.5),0.6847*floor(ftime*0.5))))*0.8+0.1- drop);
+	weights.x = 1.0-fract((ftime+0.5)*0.5);
+	weights.y = 1.0-fract((ftime+1.0)*0.5);
+	weights.z = 1.0-fract((ftime+1.5)*0.5);
+	weights.w = 1.0-fract(ftime*0.5);
+	weights *= rainStrength*clamp((eyeBrightnessSmooth.y-220)/15.0,0.0,1.0);
 }

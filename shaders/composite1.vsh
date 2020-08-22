@@ -1,265 +1,152 @@
 #version 120
+/*
+                            _____ _____ ___________
+                           /  ___|_   _|  _  | ___ \
+                           \ `--.  | | | | | | |_/ /
+                            `--. \ | | | | | |  __/
+                           /\__/ / | | \ \_/ / |
+                           \____/  \_/  \___/\_|
+						Sildur's vibrant shaders 1.16 and newer
+						Before editing anything here make sure you've
+						read The agreement, which you accepted by downloading
+						my shaderpack. The agreement can be found here:
+			http://www.minecraftforum.net/topic/1953873-164-172-sildurs-shaders-pcmacintel/
 
-#define SKY_DESATURATION 0.0f
+*/
+/*--------------------------------*/
+varying vec2 texcoord;
+varying vec2 lightPos;
 
-varying vec4 texcoord;
+varying vec3 sunVec;
+varying vec3 upVec;
+varying vec3 lightColor;
+varying vec3 sky1;
+varying vec3 sky2;
+varying vec3 nsunlight;
+varying vec3 sunlight;
+varying vec3 rawAvg;
+varying vec3 avgAmbient2;
+varying vec3 cloudColor;
+varying vec3 cloudColor2;
+
+varying float fading;
+varying float tr;
+varying float eyeAdapt;
+varying float SdotU;
+varying float sunVisibility;
+varying float moonVisibility;
 
 uniform vec3 sunPosition;
-uniform vec3 moonPosition;
 uniform vec3 upPosition;
-uniform float rainStrength;
-uniform vec3 skyColor;
-uniform float sunAngle;
-
 uniform int worldTime;
+uniform float rainStrength;
+uniform ivec2 eyeBrightnessSmooth;
+uniform mat4 gbufferProjection;
+/*--------------------------------*/
 
-varying vec3 lightVector;
-varying vec3 upVector;
-
-varying float timeSunrise;
-varying float timeNoon;
-varying float timeSunset;
-varying float timeMidnight;
-varying float timeSkyDark;
-
-varying vec3 colorSunlight;
-varying vec3 colorSkylight;
-varying vec3 colorSunglow;
-varying vec3 colorBouncedSunlight;
-varying vec3 colorScatteredSunlight;
-varying vec3 colorTorchlight;
-varying vec3 colorWaterMurk;
-varying vec3 colorWaterBlue;
-varying vec3 colorSkyTint;
-
-
-float cubeSmooth(in float x)
-{
-	return x * x * (3.0f - 2.0f * x);
+const float redtint = 1.5;
+const vec3 ToD[7] = vec3[7](  vec3(redtint,0.15,0.02),
+								vec3(redtint,0.35,0.09),
+								vec3(redtint,0.5,0.26),
+								vec3(redtint,0.5,0.35),
+								vec3(redtint,0.5,0.36),
+								vec3(redtint,0.5,0.37),
+								vec3(redtint,0.5,0.38));
+								
+						
+float luma(vec3 color) {
+	return dot(color,vec3(0.299, 0.587, 0.114));
 }
 
 
 void main() {
+
+	//Light pos for Godrays
+	vec4 tpos = vec4(sunPosition,1.0)*gbufferProjection;
+	tpos = vec4(tpos.xyz/tpos.w,1.0);
+	vec2 pos1 = tpos.xy/tpos.z;
+	lightPos = pos1*0.5+0.5;
+	/*-------------------------------*/
+
+	//Positioning
 	gl_Position = ftransform();
+	texcoord = (gl_MultiTexCoord0).xy;
+	/*--------------------------------*/
+
+	//Sun/Moon position
+	sunVec = normalize(sunPosition);
+	upVec = normalize(upPosition);
 	
-	texcoord = gl_MultiTexCoord0;
-
-	if (sunAngle < 0.5f) {
-		lightVector = normalize(sunPosition);
-	} else {
-		lightVector = normalize(moonPosition);
-	}
-
-	upVector = normalize(upPosition);
+	SdotU = dot(sunVec,upVec);
+	sunVisibility = pow(clamp(SdotU+0.15,0.0,0.15)/0.15,4.0);
+	moonVisibility = pow(clamp(-SdotU+0.15,0.0,0.15)/0.15,4.0);
+	/*--------------------------------*/
 	
+	//reduced the sun color to a 7 array
+	float hour = max(mod(worldTime/1000.0+2.0,24.0)-2.0,0.0);  //-0.1
+	float cmpH = max(-abs(floor(hour)-6.0)+6.0,0.0); //12
+	float cmpH1 = max(-abs(floor(hour)-5.0)+6.0,0.0); //1
 	
-	float timePow = 3.2f;
-	float timefract = worldTime;
+	vec3 temp = ToD[int(cmpH)];
+	vec3 temp2 = ToD[int(cmpH1)];
 	
-	// timeSunrise  = ((clamp(timefract, 23000.0, 24000.0) - 23000.0) / 1000.0) + (1.0 - (clamp(timefract, 0.0, 4000.0)/4000.0));  
-	// timeNoon     = ((clamp(timefract, 0.0, 4000.0)) / 4000.0) - ((clamp(timefract, 8000.0, 12000.0) - 8000.0) / 4000.0);
-	// timeSunset   = ((clamp(timefract, 8000.0, 12000.0) - 8000.0) / 4000.0) - ((clamp(timefract, 12000.0, 12750.0) - 12000.0) / 750.0);  
-	// timeMidnight = ((clamp(timefract, 12000.0, 12750.0) - 12000.0) / 750.0) - ((clamp(timefract, 23000.0, 24000.0) - 23000.0) / 1000.0);
-
-
+	sunlight = mix(temp,temp2,fract(hour));
+	vec3 sunlight04 = pow(mix(temp,temp2,fract(hour)),vec3(0.454));
+	/*-----------------------------------------------------------------*/
 	
-	float timeSunriseLin  = ((clamp(sunAngle, 0.95, 1.0f)  - 0.95f) / 0.05f) + (1.0 - (clamp(sunAngle, 0.0, 0.25) / 0.25f));  
-	float timeNoonLin     = ((clamp(sunAngle, 0.0, 0.25f)) 	       / 0.25f)  - (		 (clamp(sunAngle, 0.25f, 0.5f) - 0.25f) / 0.25f);
-	float timeSunsetLin   = ((clamp(sunAngle, 0.25f, 0.5f) - 0.25f) / 0.25f) - (		 (clamp(sunAngle, 0.5f, 0.52) - 0.5f) / 0.02f);  
-	float timeMidnightLin = ((clamp(sunAngle, 0.5f, 0.52f) - 0.5f) / 0.02f)  - (		 (clamp(sunAngle, 0.95, 1.0) - 0.95f) / 0.05f);
+	//Lighting
+	float eyebright = max(eyeBrightnessSmooth.y/255.0-0.5/16.0,0.0)*1.03225806452;
+	float SkyL2 = mix(1.0,eyebright*eyebright,eyebright);
 
-	timeSunriseLin = cubeSmooth(timeSunriseLin);
-	timeNoonLin = cubeSmooth(timeNoonLin);
-	timeSunsetLin = cubeSmooth(timeSunsetLin);
-	timeMidnightLin = cubeSmooth(timeMidnightLin);
+	vec2 trCalc = min(abs(worldTime-vec2(23250.0,12700.0)),750.0);
+	tr = max(min(trCalc.x,trCalc.y)/375.0-1.0,0.0);
+	float tr = clamp(min(min(distance(float(worldTime),23250.0),800.0),min(distance(float(worldTime),12700.0),800.0))/800.0-0.5,0.0,1.0)*2.0;
 
-	timeSkyDark = ((clamp(sunAngle, 0.5, 0.6) - 0.5) / 0.1) - ((clamp(timefract, 0.9, 1.0) - 0.9) / 0.1);
-	timeSkyDark = pow(timeSkyDark, 3.0f);
-	timeSkyDark = 0.0f;
+	vec4 bounced = vec4(0.5,0.66,1.3,0.27);
+	vec3 sun_ambient = bounced.w * (vec3(0.25,0.62,1.32)-rainStrength*vec3(0.1,0.47,1.17))*(1.0+rainStrength*7.0) + sunlight*(bounced.x + bounced.z)*(1.0-rainStrength*0.95);
+
+	const vec3 moonlight = vec3(0.0016, 0.00288, 0.00448);
+	vec3 moon_ambient = (moonlight + moonlight*eyebright*eyebright*eyebright);
 	
-	timeSunrise  = pow(timeSunriseLin, timePow);
-	timeNoon     = 1.0f - pow(1.0f - timeNoonLin, timePow);
-	timeSunset   = pow(timeSunsetLin, timePow);
-	timeMidnight = 1.0f - pow(1.0f - timeMidnightLin, timePow);
+	float tr2 = max(min(trCalc.x,trCalc.y)/375.0-1.0,0.0);
 
+	vec4 bounced2 = vec4(0.5*SkyL2,0.66*SkyL2,0.7,0.3);
+	vec3 sun_ambient2 = bounced2.w * (vec3(0.25,0.62,1.32)-rainStrength*vec3(0.11,0.32,1.07)) + sunlight*(bounced2.x + bounced2.z);
+	vec3 moon_ambient2 = (moonlight*3.5);
 
-	float horizonTime = clamp(0.1f - abs(sunAngle - 0.5f), 0.0f, 0.1f) / 0.1f;
-		  horizonTime += clamp(sunAngle - 0.9f, 0.0f, 0.1f) / 0.1f;
-		  horizonTime += clamp(0.1 - sunAngle, 0.0f, 1.0f) / 0.1f;
-
-		  horizonTime = pow(horizonTime, 2.0f);
+	rawAvg = (sun_ambient*sunVisibility + 8.0*moonlight*moonVisibility)*(0.05+tr*0.15)*4.7+0.0002;	
+	vec3 avgAmbient =(sun_ambient2*sunVisibility + moon_ambient2*moonVisibility)*eyebright*eyebright*(0.05+tr2*0.15)*4.7+0.0006;
+	avgAmbient2 = (sun_ambient*sunVisibility + 6.0*moon_ambient*moonVisibility)*eyebright *(0.27+tr*0.65)+0.0002;
 	
-	const float rayleigh = 0.02f;
+	eyeAdapt = log(clamp(luma(avgAmbient),0.007,80.0))/log(2.6)*0.35;
+	eyeAdapt = 1.0/pow(2.6,eyeAdapt)*1.75;
+	avgAmbient /= sqrt(3.0);
+	avgAmbient2 /= sqrt(3.0);
+	/*--------------------------------*/
 
+	//Light pos for godrays
+	float truepos = sign(sunPosition.z)*1.0;		//1 -> sun / -1 -> moon	
+	lightColor = mix(sunlight*sunVisibility+0.00001,12.*moonlight*moonVisibility+0.00001,(truepos+1.0)/2.);
+	if (length(lightColor)>0.001)lightColor = mix(lightColor,normalize(vec3(0.3,0.3,0.3))*pow(normalize(lightColor),vec3(0.4))*length(lightColor)*0.03,rainStrength)*(0.25+0.25*tr);
+	/*------------------------------------------------*/
+	
+	//Sky lighting
+	float mcosS = max(SdotU,0.0);				
 
-	colorWaterMurk = vec3(0.2f, 1.0f, 0.95f);
-	colorWaterBlue = vec3(0.2f, 1.0f, 0.95f);
-	colorWaterBlue = mix(colorWaterBlue, vec3(1.0f), vec3(0.5f));
-
-//colors for shadows/sunlight and sky
+	float skyMult = max(SdotU*0.1+0.1,0.0)/0.2*(1.0-rainStrength*0.6)*0.7;
+	nsunlight = normalize(pow(mix(sunlight04 ,5.*sunlight04 *sunVisibility*(1.0-rainStrength*0.95)+vec3(0.3,0.3,0.35),rainStrength),vec3(2.2)))*0.6*skyMult;
 	
-	vec3 sunrise_sun;
-	 sunrise_sun.r = 1.00;
-	 sunrise_sun.g = 0.58;
-	 sunrise_sun.b = 0.00;
-	 sunrise_sun *= 0.65f;
+	vec3 sky_color = vec3(0.15, 0.4, 1.);
+	sky_color = normalize(mix(sky_color,2.*sunlight04 *sunVisibility*(1.0-rainStrength*0.95)+vec3(0.3,0.3,0.3)*length(sunlight04 ),rainStrength)); //normalize colors in order to don't change luminance
 	
-	vec3 sunrise_amb;
-	 sunrise_amb.r = 0.30 ;
-	 sunrise_amb.g = 0.595;
-	 sunrise_amb.b = 0.70 ;	
-	 sunrise_amb *= 1.0f;
-	 
+	sky1 = sky_color*0.6*skyMult;
+	sky2 = mix(sky_color,mix(nsunlight,sky_color,rainStrength*0.9),1.0-max(mcosS-0.2,0.0)*0.5)*0.6*skyMult;
 	
-	vec3 noon_sun;
-	 noon_sun.r = mix(1.00, 1.00, rayleigh);
-	 noon_sun.g = mix(1.00, 0.75, rayleigh);
-	 noon_sun.b = mix(1.00, 0.00, rayleigh);	 
+	cloudColor = sunlight04 *sunVisibility*(1.0-rainStrength*0.17)*length(rawAvg) + rawAvg*0.7*(1.0-rainStrength*0.1) + 2.0*moonlight*moonVisibility*(1.0-rainStrength*0.17);
+	cloudColor2 = 0.1*sunlight*sunVisibility*(1.0-rainStrength*0.15)*length(rawAvg) + 1.5*length(rawAvg)*mix(vec3(0.15, 0.4, 1.),vec3(0.65, 0.65, 0.65),rainStrength)*(1.0-rainStrength*0.1) + 2.0*moonlight*moonVisibility*(1.0-rainStrength*0.15);
 	
-	vec3 noon_amb;
-	 noon_amb.r = 0.00 ;
-	 noon_amb.g = 0.3  ;
-	 noon_amb.b = 0.999;
-	
-	vec3 sunset_sun;
-	 sunset_sun.r = 1.0 ;
-	 sunset_sun.g = 0.58;
-	 sunset_sun.b = 0.0 ;
-	 sunset_sun *= 0.65f;
-	
-	vec3 sunset_amb;
-	 sunset_amb.r = 1.0;
-	 sunset_amb.g = 0.0;
-	 sunset_amb.b = 0.0;	
-	 sunset_amb *= 1.0f;
-	
-	vec3 midnight_sun;
-	 midnight_sun.r = 1.0;
-	 midnight_sun.g = 1.0;
-	 midnight_sun.b = 1.0;
-	
-	vec3 midnight_amb;
-	 midnight_amb.r = 0.0 ;
-	 midnight_amb.g = 0.23;
-	 midnight_amb.b = 0.99;
-
-
-	colorSunlight = sunrise_sun * timeSunrise  +  noon_sun * timeNoon  +  sunset_sun * timeSunset  +  midnight_sun * timeMidnight;
-
-
-
-	sunrise_amb = vec3(0.19f, 0.35f, 0.7f) * 0.15f;
-	noon_amb    = vec3(0.11f, 0.24f, 0.99f);
-	sunset_amb  = vec3(0.3f, 0.4f, 0.7f) * 0.15f;
-	midnight_amb = vec3(0.005f, 0.01f, 0.02f) * 0.025f;
-	
-	colorSkylight = sunrise_amb * timeSunrise  +  noon_amb * timeNoon  +  sunset_amb * timeSunset  +  midnight_amb * timeMidnight;
-
-	vec3 colorSunglow_sunrise;
-	 colorSunglow_sunrise.r = 1.00f * timeSunrise;
-	 colorSunglow_sunrise.g = 0.46f * timeSunrise;
-	 colorSunglow_sunrise.b = 0.00f * timeSunrise;
-	 
-	vec3 colorSunglow_noon;
-	 colorSunglow_noon.r = 1.0f * timeNoon;
-	 colorSunglow_noon.g = 1.0f * timeNoon;
-	 colorSunglow_noon.b = 1.0f * timeNoon;
-	 
-	vec3 colorSunglow_sunset;
-	 colorSunglow_sunset.r = 1.00f * timeSunset;
-	 colorSunglow_sunset.g = 0.38f * timeSunset;
-	 colorSunglow_sunset.b = 0.00f * timeSunset;
-	 
-	vec3 colorSunglow_midnight;
-	 colorSunglow_midnight.r = 0.05f * 0.8f * 0.0055f * timeMidnight;
-	 colorSunglow_midnight.g = 0.20f * 0.8f * 0.0055f * timeMidnight;
-	 colorSunglow_midnight.b = 0.90f * 0.8f * 0.0055f * timeMidnight;
-	
-	 colorSunglow = colorSunglow_sunrise + colorSunglow_noon + colorSunglow_sunset + colorSunglow_midnight;
-	 
-	 
-	 
-	
-	 //colorBouncedSunlight = mix(vec3(0.64f, 0.73f, 0.34f), colorBouncedSunlight, 0.5f);
-	 //colorBouncedSunlight = colorSunlight;
-	 
-	//colorSkylight.g *= 0.95f;
-	 
-	 //colorSkylight = mix(colorSkylight, vec3(dot(colorSkylight, vec3(1.0))), SKY_DESATURATION);
-	 
-	 float sun_fill = 0.0;
-	
-	 //colorSkylight = mix(colorSkylight, colorSunlight, sun_fill);
-	 vec3 colorSkylight_rain = vec3(2.0, 2.0, 2.38) * 0.25f * (1.0f - timeMidnight * 0.9995f); //rain
-	 colorSkylight = mix(colorSkylight, colorSkylight_rain, rainStrength); //rain
-	
-
-				
-	//Saturate sunlight colors
-	colorSunlight = pow(colorSunlight, vec3(2.9f));
-	
-	
-	 colorBouncedSunlight = mix(colorSunlight, colorSkylight, 0.15f);
-	 
-	 colorScatteredSunlight = mix(colorSunlight, colorSkylight, 0.15f);
-
-	 colorSunglow = pow(colorSunglow, vec3(2.5f));
-	 
-	//colorSunlight = vec3(1.0f, 0.5f, 0.0f);
-
-	//Make ambient light darker when not day time
-	// colorSkylight = mix(colorSkylight, colorSkylight * 0.03f, timeSunrise);
-	// colorSkylight = mix(colorSkylight, colorSkylight * 1.0f, timeNoon);
-	// colorSkylight = mix(colorSkylight, colorSkylight * 0.3f, timeSunset);
-	// colorSkylight = mix(colorSkylight, colorSkylight * 0.0080f, timeMidnight);
-	// colorSkylight *= mix(1.0f, 0.001f, timeMidnightLin);
-	// colorSkylight *= mix(1.0f, 0.001f, timeSunriseLin);
-	//colorSkylight = vec3(0.3f) * vec3(0.17f, 0.37f, 0.8f);
-
-	// colorSkylight = vec3(0.0f, 0.0f, 1.0f);
-	// colorSunlight = vec3(1.0f, 1.0f, 0.0f); //fuf
-	
-	//Make sunlight darker when not day time
-	colorSunlight = mix(colorSunlight, colorSunlight * 0.5f, timeSunrise);
-	colorSunlight = mix(colorSunlight, colorSunlight * 1.0f, timeNoon);
-	colorSunlight = mix(colorSunlight, colorSunlight * 0.5f, timeSunset);
-	colorSunlight = mix(colorSunlight, colorSunlight * 0.00020f, timeMidnight);
-	
-	//Make reflected light darker when not day time
-	colorBouncedSunlight = mix(colorBouncedSunlight, colorBouncedSunlight * 0.5f, timeSunrise);
-	colorBouncedSunlight = mix(colorBouncedSunlight, colorBouncedSunlight * 1.0f, timeNoon);
-	colorBouncedSunlight = mix(colorBouncedSunlight, colorBouncedSunlight * 0.5f, timeSunset);
-	colorBouncedSunlight = mix(colorBouncedSunlight, colorBouncedSunlight * 0.000015f, timeMidnight);
-	
-	//Make scattered light darker when not day time
-	colorScatteredSunlight = mix(colorScatteredSunlight, colorScatteredSunlight * 0.5f, timeSunrise);
-	colorScatteredSunlight = mix(colorScatteredSunlight, colorScatteredSunlight * 1.0f, timeNoon);
-	colorScatteredSunlight = mix(colorScatteredSunlight, colorScatteredSunlight * 0.5f, timeSunset);
-	colorScatteredSunlight = mix(colorScatteredSunlight, colorScatteredSunlight * 0.000015f, timeMidnight);
-
-	//Make scattered light darker when not day time
-	// colorSkyTint = mix(colorSkyTint, colorSkyTint * 0.5f, timeSunrise);
-	// colorSkyTint = mix(colorSkyTint, colorSkyTint * 1.0f, timeNoon);
-	// colorSkyTint = mix(colorSkyTint, colorSkyTint * 0.5f, timeSunset);
-	// colorSkyTint = mix(colorSkyTint, colorSkyTint * 0.0045f, timeMidnight);
-	
-
-
-	float colorSunlightLum = colorSunlight.r + colorSunlight.g + colorSunlight.b;
-		  colorSunlightLum /= 3.0f;
-
-	colorSunlight = mix(colorSunlight, vec3(colorSunlightLum), vec3(rainStrength));
-
-	colorSunlight *= 1.0f - horizonTime;
-	
-	//Torchlight color
-	float torchWhiteBalance = 0.02f;
-	colorTorchlight = vec3(1.00f, 0.22f, 0.00f);
-	colorTorchlight = mix(colorTorchlight, vec3(1.0f), vec3(torchWhiteBalance));
-
-	colorTorchlight = pow(colorTorchlight, vec3(0.99f));
-
-
-	//colorSkylight = vec3(0.1f);
-	
+	vec2 centerLight = abs(lightPos*2.0-1.0);
+    float distof = max(centerLight.x,centerLight.y);
+	fading = clamp(1.0-distof*distof*distof*0.,0.0,1.0);
+	/*-----------------------------------------------------*/
 }

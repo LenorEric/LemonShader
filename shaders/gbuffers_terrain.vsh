@@ -1,578 +1,262 @@
 #version 120
+/*
+Sildur's vibrant shaders v1.17, before editing, remember the agreement you've accepted by downloading this shaderpack:
+http://www.minecraftforum.net/forums/mapping-and-modding/minecraft-mods/1291396-1-6-4-1-12-1-sildurs-shaders-pc-mac-intel
 
+You are allowed to:
+- Modify it for your own personal use only, so don't share it online.
 
-//If you're using 1.7.2, it has a texture glitch where certain sides of blocks are mirrored. Enable the following to compensate and keep lighting correct
-#define TEXTURE_FIX
+You are not allowed to:
+- Rename and/or modify this shaderpack and upload it with your own name on it.
+- Provide mirrors by reuploading my shaderpack, if you want to link it, use the link to my thread found above.
+- Copy and paste code or even whole files into your "own" shaderpack.
+*/
+/*--------------------
+//ADJUSTABLE VARIABLES//
+---------------------*/
 
+//#define POM				//Parallax mapping, must also be enabled/disabled in gbuffers_terrain.fsh (fragment)
+
+#define Waving_Leaves
+#define Waving_Vines
+#define Waving_Grass		//Does not include tallgrass due some issues with it.
+#define Waving_Fire
+#define Waving_Lava
+#define Waving_Lilypads
+#define Waving_Entities		//Includes: Saplings, small flowers, wheat, carrots, potatoes and beetroot.
+
+/*---------------------------
+//END OF ADJUSTABLE VARIABLES//
+----------------------------*/
+
+//Moving entities IDs
+#define ENTITY_LEAVES        18.0
+#define ENTITY_VINES        106.0
+#define ENTITY_TALLGRASS     31.0
+#define ENTITY_DANDELION     37.0
+#define ENTITY_ROSE          38.0
+#define ENTITY_WHEAT         59.0
+#define ENTITY_LILYPAD      111.0
+#define ENTITY_FIRE          51.0
+#define ENTITY_LAVAFLOWING   10.0
+#define ENTITY_LAVASTILL     11.0
 
 varying vec4 color;
 varying vec4 texcoord;
-varying vec4 lmcoord;
-varying vec3 worldPosition;
 
+varying vec4 normal;
 
 attribute vec4 mc_Entity;
+attribute vec4 mc_midTexCoord;
 
-uniform int worldTime;
 uniform vec3 cameraPosition;
-uniform float frameTimeCounter;
-uniform float rainStrength;
+
 uniform mat4 gbufferModelView;
 uniform mat4 gbufferModelViewInverse;
-uniform mat4 shadowModelView;
-uniform mat4 shadowModelViewInverse;
-uniform mat4 gbufferProjection;
-uniform mat4 gbufferProjectionInverse;
+uniform float frameTimeCounter;
+const float PI = 3.1415927;
+const float PI48 = 150.796447372;
+float pi2wt = PI48*frameTimeCounter;
 
-uniform float aspectRatio;
-
-uniform sampler2D noisetex;
-
-varying vec3 normal;
-varying vec3 tangent;
-varying vec3 binormal;
-varying vec2 waves;
-varying vec3 worldNormal;
-
-varying float distance;
-//varying float idCheck;
-
-varying float materialIDs;
-
+#ifdef POM
+attribute vec4 at_tangent;                      //xyz = tangent vector, w = handedness, added in 1.7.10
+varying float dist;
+varying vec3 viewVector;
 varying mat3 tbnMatrix;
-varying vec4 vertexPos;
-varying vec3 vertexViewVector;
-
-
-#define WAVING_GRASS
-#define WAVING_WHEAT
-#define WAVING_LEAVES
-#define WAVING_CARROTS
-#define WAVING_NETHER_WART
-#define WAVING_POTATOES
-
-
-#define ANIMATION_SPEED 1.0f
-
-//#define ANIMATE_USING_WORLDTIME
-
-
-
-#ifdef ANIMATE_USING_WORLDTIME
-#define FRAME_TIME worldTime * ANIMATION_SPEED / 20.0f
-#else
-#define FRAME_TIME frameTimeCounter * ANIMATION_SPEED
+varying vec4 vtexcoordam; // .st for add, .pq for mul
+varying vec4 vtexcoord;
 #endif
 
-vec4 cubic(float x)
-{
-    float x2 = x * x;
-    float x3 = x2 * x;
-    vec4 w;
-    w.x =   -x3 + 3*x2 - 3*x + 1;
-    w.y =  3*x3 - 6*x2       + 4;
-    w.z = -3*x3 + 3*x2 + 3*x + 1;
-    w.w =  x3;
-    return w / 6.f;
+vec3 calcWave(in vec3 pos, in float fm, in float mm, in float ma, in float f0, in float f1, in float f2, in float f3, in float f4, in float f5) {
+    vec3 ret;
+    float magnitude,d0,d1,d2,d3;
+    magnitude = sin(pi2wt*fm + pos.x*0.5 + pos.z*0.5 + pos.y*0.5) * mm + ma;
+    d0 = sin(pi2wt*f0);
+    d1 = sin(pi2wt*f1);
+    d2 = sin(pi2wt*f2);
+    ret.x = sin(pi2wt*f3 + d0 + d1 - pos.x + pos.z + pos.y) * magnitude;
+    ret.z = sin(pi2wt*f4 + d1 + d2 + pos.x - pos.z + pos.y) * magnitude;
+	ret.y = sin(pi2wt*f5 + d2 + d0 + pos.z + pos.y - pos.y) * magnitude;
+    return ret;
 }
 
-vec4 BicubicTexture(in sampler2D tex, in vec2 coord)
-{
-	int resolution = 64;
-
-	coord *= resolution;
-
-	float fx = fract(coord.x);
-    float fy = fract(coord.y);
-    coord.x -= fx;
-    coord.y -= fy;
-
-    vec4 xcubic = cubic(fx);
-    vec4 ycubic = cubic(fy);
-
-    vec4 c = vec4(coord.x - 0.5, coord.x + 1.5, coord.y - 0.5, coord.y + 1.5);
-    vec4 s = vec4(xcubic.x + xcubic.y, xcubic.z + xcubic.w, ycubic.x + ycubic.y, ycubic.z + ycubic.w);
-    vec4 offset = c + vec4(xcubic.y, xcubic.w, ycubic.y, ycubic.w) / s;
-
-    vec4 sample0 = texture2D(tex, vec2(offset.x, offset.z) / resolution);
-    vec4 sample1 = texture2D(tex, vec2(offset.y, offset.z) / resolution);
-    vec4 sample2 = texture2D(tex, vec2(offset.x, offset.w) / resolution);
-    vec4 sample3 = texture2D(tex, vec2(offset.y, offset.w) / resolution);
-
-    float sx = s.x / (s.x + s.y);
-    float sy = s.z / (s.z + s.w);
-
-    return mix( mix(sample3, sample2, sx), mix(sample1, sample0, sx), sy);
+vec3 calcMove(in vec3 pos, in float f0, in float f1, in float f2, in float f3, in float f4, in float f5, in vec3 amp1, in vec3 amp2) {
+    vec3 move1 = calcWave(pos      , 0.0027, 0.0400, 0.0400, 0.0127, 0.0089, 0.0114, 0.0063, 0.0224, 0.0015) * amp1;
+	vec3 move2 = calcWave(pos+move1, 0.0348, 0.0400, 0.0400, f0, f1, f2, f3, f4, f5) * amp2;
+    return move1+move2;
 }
 
-
-
-
-// 	vec4 result = mix(texCenter, texRight, vec4(f.x));
-// 	return result;
-// }
-
-
-vec4 TextureSmooth(in sampler2D tex, in vec2 coord)
-{
-	int level = 0;
-	vec2 res = vec2(64.0f);
-	coord = coord * res;
-	vec2 i = floor(coord);
-	vec2 f = fract(coord);
-	f = f * f * (3.0f - 2.0f * f);
-	//f = 1.0f - (cos(f * 3.1415f) * 0.5f + 0.5f);
-
-	//i -= vec2(0.5f);
-
-	vec2 icoordCenter 		= i / res;
-	vec2 icoordRight 		= (i + vec2(1.0f, 0.0f)) / res;
-	vec2 icoordUp	 		= (i + vec2(0.0f, 1.0f)) / res;
-	vec2 icoordUpRight	 	= (i + vec2(1.0f, 1.0f)) / res;
-
-
-	vec4 texCenter 	= texture2DLod(tex, icoordCenter, 	level);
-	vec4 texRight 	= texture2DLod(tex, icoordRight, 	level);
-	vec4 texUp 		= texture2DLod(tex, icoordUp, 		level);
-	vec4 texUpRight	= texture2DLod(tex, icoordUpRight,  level);
-
-	texCenter = mix(texCenter, texUp, vec4(f.y));
-	texRight  = mix(texRight, texUpRight, vec4(f.y));
-
-	vec4 result = mix(texCenter, texRight, vec4(f.x));
-	return result;
-}
-
-float Impulse(in float x, in float k)
-{
-	float h = k*x;
-    return pow(h*exp(1.0f-h), 5.0f);
-}
-
-float RepeatingImpulse(in float x, in float scale)
-{
-	float time = x;
-		  time = mod(time, scale);
-
-	return Impulse(time, 3.0f / scale);
-}
+/* If you reached this line, then you're probably about to break the agreement which you accepted by downloading Sildur's shaders!
+So stop your doing and ask Sildur before copying anything which would break the agreement, unless you're Chocapic then go ahead ;)
+--------------------------------------------------------------------------------------------------------------------------------*/
 
 void main() {
 
+	//Unpack material
+	normal.a = 0.02;
+	
+	//Positioning
+	normal.xyz = normalize(gl_NormalMatrix * gl_Normal);
+	texcoord = vec4((gl_MultiTexCoord0).xy,(gl_TextureMatrix[1] * gl_MultiTexCoord1).xy);
+	
+	vec4 position = gbufferModelViewInverse * gl_ModelViewMatrix * gl_Vertex;
+	vec3 worldpos = position.xyz + cameraPosition;
+	bool istopv = gl_MultiTexCoord0.t < mc_midTexCoord.t;
+
+#ifdef Waving_Grass
+if(istopv || mc_Entity.z > 8.0){
+	if (mc_Entity.x == 175.0)
+			position.xyz += calcMove(worldpos.xyz,
+			0.0041,
+			0.0070,
+			0.0044,
+			0.0038,
+			0.0240,
+			0.0000,
+			vec3(0.8,0.0,0.8),
+			vec3(0.4,0.0,0.4));
+}
+#endif
+if (istopv) {
+	#ifdef Waving_Grass
+	if ( mc_Entity.x == ENTITY_TALLGRASS)
+			position.xyz += calcMove(worldpos.xyz,
+				0.0041,
+				0.0070,
+				0.0044,
+				0.0038,
+				0.0063,
+				0.0000,
+				vec3(3.0,1.6,3.0),
+				vec3(0.0,0.0,0.0));
+	#endif
+	#ifdef Waving_Entities
+	if ( mc_Entity.x == ENTITY_WHEAT || mc_Entity.x == 6.0 || mc_Entity.x == ENTITY_DANDELION || mc_Entity.x == ENTITY_ROSE || mc_Entity.x == 141.0 || mc_Entity.x == 142.0 || mc_Entity.x == 207.0)
+			position.xyz += calcMove(worldpos.xyz,
+			0.0041,
+			0.0070,
+			0.0044,
+			0.0038,
+			0.0240,
+			0.0000,
+			vec3(0.8,0.0,0.8),
+			vec3(0.4,0.0,0.4));
+	#endif
+	#ifdef Waving_Fire
+	if ( mc_Entity.x == ENTITY_FIRE)
+			position.xyz += calcMove(worldpos.xyz,
+			0.0105,
+			0.0096,
+			0.0087,
+			0.0063,
+			0.0097,
+			0.0156,
+			vec3(1.2,0.4,1.2),
+			vec3(0.8,0.8,0.8));
+	#endif
+}
+
+	#ifdef Waving_Leaves
+	if ( mc_Entity.x == ENTITY_LEAVES || mc_Entity.x == 161.0)
+			position.xyz += calcMove(worldpos.xyz,
+			0.0040,
+			0.0064,
+			0.0043,
+			0.0035,
+			0.0037,
+			0.0041,
+			vec3(1.0,0.2,1.0),
+			vec3(0.5,0.1,0.5));
+	#endif
+	#ifdef Waving_Vines
+	if ( mc_Entity.x == ENTITY_VINES )
+			position.xyz += calcMove(worldpos.xyz,
+			0.0040,
+			0.0064,
+			0.0043,
+			0.0035,
+			0.0037,
+			0.0041,
+			vec3(0.5,1.0,0.5),
+			vec3(0.25,0.5,0.25));
+	#endif
+
+	#ifdef Waving_Lava
+	if(mc_Entity.x == ENTITY_LAVAFLOWING || mc_Entity.x == ENTITY_LAVASTILL){
+		float fy = fract(worldpos.y + 0.001);
+		float wave = 0.05 * sin(2 * PI * (frameTimeCounter*0.2 + worldpos.x /  7.0 + worldpos.z / 13.0))
+				   + 0.05 * sin(2 * PI * (frameTimeCounter*0.15 + worldpos.x / 11.0 + worldpos.z /  5.0));
+		position.y += clamp(wave, -fy, 1.0-fy)*0.5;
+	}
+	#endif
+	
+	#ifdef Waving_Lilypads
+	if(mc_Entity.x == 111.0){
+	float fy = fract(worldpos.y + 0.001);
+	float wave = 0.05 * sin(2 * PI * (frameTimeCounter*0.75 + worldpos.x /  7.0 + worldpos.z / 13.0))
+			   + 0.05 * sin(2 * PI * (frameTimeCounter*0.6 + worldpos.x / 11.0 + worldpos.z /  5.0));
+	position.y += clamp(wave, -fy, 1.0-fy)*1.0-0.11;
+	}
+	#endif
+	
 	color = gl_Color;
 
-	texcoord = gl_MultiTexCoord0;
-
-	lmcoord = gl_TextureMatrix[1] * gl_MultiTexCoord1;
-	
-	vec4 viewpos = gbufferModelViewInverse * gl_ModelViewMatrix * gl_Vertex;
-	vec4 position = viewpos;
-
-	worldPosition = viewpos.xyz + cameraPosition.xyz;
-
-	float waveCoeff = 0.0f;
-
-	
-	//Entity checker
-	// if (mc_Entity.x == 1920.0f)
-	// {
-	// 	texcoord.st = vec2(0.2f);
-	// }
-	
-	//Gather materials
-	materialIDs = 1.0f;
-
-	//Grass
-	if  (  mc_Entity.x == 31.0
-
-		|| mc_Entity.x == 38.0f 	//Rose
-		|| mc_Entity.x == 37.0f 	//Flower
-		|| mc_Entity.x == 1925.0f 	//Biomes O Plenty: Medium Grass
-		|| mc_Entity.x == 1920.0f 	//Biomes O Plenty: Thorns, barley
-		|| mc_Entity.x == 1921.0f 	//Biomes O Plenty: Sunflower
-		|| mc_Entity.x == 115.0f    //Nether Wart
-
-		)
-	{
-		materialIDs = max(materialIDs, 2.0f);
-		waveCoeff = 1.0f;
+	//Fix colors on emissive blocks
+	if (mc_Entity.x == 50.0
+	|| mc_Entity.x == 51.0
+	|| mc_Entity.x == 10.0
+	|| mc_Entity.x == 11.0
+	|| mc_Entity.x == 62.0
+	|| mc_Entity.x == 76.0
+	|| mc_Entity.x == 91.0
+	|| mc_Entity.x == 89.0
+	|| mc_Entity.x == 124.0
+	|| mc_Entity.x == 138.0){
+	normal.a = 0.6;	
+	color = vec4(1.0);
 	}
 
-	if (  mc_Entity.x == 175.0f)
-	{
-		materialIDs = max(materialIDs, 2.0f);
+	//Translucent blocks
+	if (mc_Entity.x == ENTITY_VINES
+	|| mc_Entity.x == ENTITY_DANDELION
+	|| mc_Entity.x == ENTITY_ROSE
+	|| mc_Entity.x == ENTITY_WHEAT
+	|| mc_Entity.x == 207.0 //beetroot
+	|| mc_Entity.x == 30.0
+	|| mc_Entity.x == 31.0
+	|| mc_Entity.x == 175.0
+	|| mc_Entity.x == 115.0
+	|| mc_Entity.x == 32.0
+	|| mc_Entity.x == 141.0
+	|| mc_Entity.x == 142.0
+	|| mc_Entity.x == ENTITY_LILYPAD
+	|| mc_Entity.x == ENTITY_LAVAFLOWING
+	|| mc_Entity.x == ENTITY_LAVASTILL
+	|| mc_Entity.x == ENTITY_LEAVES  
+	|| mc_Entity.x == 161.0		//1.8+ Leaves
+	|| mc_Entity.x == ENTITY_TALLGRASS
+	|| mc_Entity.x == 6.0){
+	normal.a = 0.7;
 	}
-	
-	//Wheat
-	if (mc_Entity.x == 59.0) {
-		materialIDs = max(materialIDs, 2.0f);
-		waveCoeff = 1.0f;
-	}	
-	
-	//WAVING_CARROTS
-    if (mc_Entity.x == 141.0) {
-            materialIDs = max(materialIDs, 2.0f);
-            waveCoeff = 1.0f;
-    }
- 
-    //WAVING_POTATOES
-    if (mc_Entity.x == 142.0) {
-            materialIDs = max(materialIDs, 2.0f);
-            waveCoeff = 1.0f;
-    }
- 
-	
-	//Leaves
-	if   ( mc_Entity.x == 18.0 
-
-		|| mc_Entity.x == 1962.0f //Biomes O Plenty: Leaves
-		|| mc_Entity.x == 1924.0f //Biomes O Plenty: Leaves
-		|| mc_Entity.x == 1923.0f //Biomes O Plenty: Leaves
-		|| mc_Entity.x == 1926.0f //Biomes O Plenty: Leaves
-		|| mc_Entity.x == 1936.0f //Biomes O Plenty: Giant Flower Leaves
-		|| mc_Entity.x == 161.0f //Biomes O Plenty: Giant Flower Leaves
-
-		 ) {
-		materialIDs = max(materialIDs, 3.0f);
-	}	
-
-	
-	//Gold block
-	if (mc_Entity.x == 41) {
-		materialIDs = max(materialIDs, 20.0f);
-	}
-	
-	//Iron block
-	if (mc_Entity.x == 42) {
-		materialIDs = max(materialIDs, 21.0f);
-	}
-	
-	//Diamond Block
-	if (mc_Entity.x == 57) {
-		materialIDs = max(materialIDs, 22.0f);
-	}
-	
-	//Emerald Block
-	if (mc_Entity.x == -123) {
-		materialIDs = max(materialIDs, 23.0f);
-	}
-	
-	
-	
-	//sand
-	if (mc_Entity.x == 12) {
-		materialIDs = max(materialIDs, 24.0f);
-	}
-
-	//sandstone
-	if (mc_Entity.x == 24 || mc_Entity.x == -128) {
-		materialIDs = max(materialIDs, 25.0f);
-	}
-	
-	//stone
-	if (mc_Entity.x == 1) {
-		materialIDs = max(materialIDs, 26.0f);
-	}
-	
-	//cobblestone
-	if (mc_Entity.x == 4) {
-		materialIDs = max(materialIDs, 27.0f);
-	}
-	
-	//wool
-	if (mc_Entity.x == 35) {
-		materialIDs = max(materialIDs, 28.0f);
-	}
-
-
-	//torch	
-	if (mc_Entity.x == 50) {
-		materialIDs = max(materialIDs, 30.0f);
-	}
-
-	//lava
-	if (mc_Entity.x == 10 || mc_Entity.x == 11) {
-		materialIDs = max(materialIDs, 31.0f);
-	}
-
-	//glowstone and lamp
-	if (mc_Entity.x == 89 || mc_Entity.x == 124) {
-		materialIDs = max(materialIDs, 32.0f);
-	}
-
-	//fire
-	if (mc_Entity.x == 51) {
-		materialIDs = max(materialIDs, 33.0f);
-	}
-
-
-
-	float tick = FRAME_TIME;
-	
-	
-float grassWeight = mod(texcoord.t * 16.0f, 1.0f / 16.0f);
-
-float lightWeight = clamp((lmcoord.t * 33.05f / 32.0f) - 1.05f / 32.0f, 0.0f, 1.0f);
-	  lightWeight *= 1.1f;
-	  lightWeight -= 0.1f;
-	  lightWeight = max(0.0f, lightWeight);
-	  lightWeight = pow(lightWeight, 5.0f);
-	  
-	  // if (texcoord.t < 0.65f) {
-	  // 	grassWeight = 1.0f;
-	  // } else {
-	  // 	grassWeight = 0.0f;
-	  // }	 
-
-	  if (grassWeight < 0.01f) {
-	  	grassWeight = 1.0f;
-	  } else {
-	  	grassWeight = 0.0f;
-	  }
-
-const float pi = 3.14159265f;
-
-position.xyz += cameraPosition.xyz;
-	
-#ifdef WAVING_GRASS	
-	//Waving grass
-	if (waveCoeff > 0.5f)
-	{
-		vec2 angleLight = vec2(0.0f);
-		vec2 angleHeavy = vec2(0.0f);
-		vec2 angle 		= vec2(0.0f);
-
-		vec3 pn0 = position.xyz;
-			 pn0.x -= FRAME_TIME / 3.0f;
-
-		vec3 stoch = BicubicTexture(noisetex, pn0.xz / 64.0f).xyz;
-		vec3 stochLarge = BicubicTexture(noisetex, position.xz / (64.0f * 6.0f)).xyz;
-
-		vec3 pn = position.xyz;
-			 pn.x *= 2.0f;
-			 pn.x -= FRAME_TIME * 15.0f;
-			 pn.z *= 8.0f;
-
-		vec3 stochLargeMoving = BicubicTexture(noisetex, pn.xz / (64.0f * 10.0f)).xyz;
-
-
-
-		vec3 p = position.xyz;
-		 	 p.x += sin(p.z / 2.0f) * 1.0f;
-		 	 p.xz += stochLarge.rg * 5.0f;
-
-		float windStrength = mix(0.85f, 1.0f, rainStrength);
-		float windStrengthRandom = stochLargeMoving.x;
-			  windStrengthRandom = pow(windStrengthRandom, mix(2.0f, 1.0f, rainStrength));
-			  windStrength *= mix(windStrengthRandom, 0.5f, rainStrength * 0.25f);
-			  //windStrength = 1.0f;
-
-		//heavy wind
-		float heavyAxialFrequency 			= 8.0f;
-		float heavyAxialWaveLocalization 	= 0.9f;
-		float heavyAxialRandomization 		= 13.0f;
-		float heavyAxialAmplitude 			= 15.0f;
-		float heavyAxialOffset 				= 15.0f;
-
-		float heavyLateralFrequency 		= 6.732f;
-		float heavyLateralWaveLocalization 	= 1.274f;
-		float heavyLateralRandomization 	= 1.0f;
-		float heavyLateralAmplitude 		= 6.0f;
-		float heavyLateralOffset 			= 0.0f;
-
-		//light wind
-		float lightAxialFrequency 			= 5.5f;
-		float lightAxialWaveLocalization 	= 1.1f;
-		float lightAxialRandomization 		= 21.0f;
-		float lightAxialAmplitude 			= 5.0f;
-		float lightAxialOffset 				= 5.0f;
-
-		float lightLateralFrequency 		= 5.9732f;
-		float lightLateralWaveLocalization 	= 1.174f;
-		float lightLateralRandomization 	= 0.0f;
-		float lightLateralAmplitude 		= 1.0f;
-		float lightLateralOffset 			= 0.0f;
-
-		float windStrengthCrossfade = clamp(windStrength * 2.0f - 1.0f, 0.0f, 1.0f);
-		float lightWindFade = clamp(windStrength * 2.0f, 0.2f, 1.0f);
-
-		angleLight.x += sin(FRAME_TIME * lightAxialFrequency 		- p.x * lightAxialWaveLocalization		+ stoch.x * lightAxialRandomization) 	* lightAxialAmplitude 		+ lightAxialOffset;	
-		angleLight.y += sin(FRAME_TIME * lightLateralFrequency 	- p.x * lightLateralWaveLocalization 	+ stoch.x * lightLateralRandomization) 	* lightLateralAmplitude  	+ lightLateralOffset;
-
-		angleHeavy.x += sin(FRAME_TIME * heavyAxialFrequency 		- p.x * heavyAxialWaveLocalization		+ stoch.x * heavyAxialRandomization) 	* heavyAxialAmplitude 		+ heavyAxialOffset;	
-		angleHeavy.y += sin(FRAME_TIME * heavyLateralFrequency 	- p.x * heavyLateralWaveLocalization 	+ stoch.x * heavyLateralRandomization) 	* heavyLateralAmplitude  	+ heavyLateralOffset;
-
-		angle = mix(angleLight * lightWindFade, angleHeavy, vec2(windStrengthCrossfade));
-		angle *= 2.0f;
-
-		// //Rotate block pivoting from bottom based on angle
-		position.x += (sin((angle.x / 180.0f) * 3.141579f)) * grassWeight * lightWeight						* 1.0f	;
-		position.z += (sin((angle.y / 180.0f) * 3.141579f)) * grassWeight * lightWeight						* 1.0f	;
-		position.y += (cos(((angle.x + angle.y) / 180.0f) * 3.141579f) - 1.0f)  * grassWeight * lightWeight	* 1.0f	;
-	}
-	
-#endif	
-
-
-
-#ifdef WAVING_WHEAT
-//Wheat//
-	if (mc_Entity.x == 59.0 && texcoord.t < 0.35) {
-		float speed = 0.1;
-		
-		float magnitude = sin((tick * pi / (28.0)) + position.x + position.z) * 0.12 + 0.02;
-			  magnitude *= grassWeight * 0.2f;
-			  magnitude *= lightWeight;
-		float d0 = sin(tick * pi / (122.0 * speed)) * 3.0 - 1.5 + position.z;
-		float d1 = sin(tick * pi / (152.0 * speed)) * 3.0 - 1.5 + position.x;
-		float d2 = sin(tick * pi / (122.0 * speed)) * 3.0 - 1.5 + position.x;
-		float d3 = sin(tick * pi / (152.0 * speed)) * 3.0 - 1.5 + position.z;
-		position.x += sin((tick * pi / (28.0 * speed)) + (position.x + d0) * 0.1 + (position.z + d1) * 0.1) * magnitude;
-		position.z += sin((tick * pi / (28.0 * speed)) + (position.z + d2) * 0.1 + (position.x + d3) * 0.1) * magnitude;
-	}
-	
-	//small leaf movement
-	if (mc_Entity.x == 59.0 && texcoord.t < 0.35) {
-		float speed = 0.04;
-		
-		float magnitude = (sin(((position.y + position.x)/2.0 + tick * pi / ((28.0)))) * 0.025 + 0.075) * 0.2;
-			  magnitude *= grassWeight;
-			  magnitude *= lightWeight;
-		float d0 = sin(tick * pi / (112.0 * speed)) * 3.0 - 1.5;
-		float d1 = sin(tick * pi / (142.0 * speed)) * 3.0 - 1.5;
-		float d2 = sin(tick * pi / (112.0 * speed)) * 3.0 - 1.5;
-		float d3 = sin(tick * pi / (142.0 * speed)) * 3.0 - 1.5;
-		position.x += sin((tick * pi / (18.0 * speed)) + (-position.x + d0)*1.6 + (position.z + d1)*1.6) * magnitude * (1.0f + rainStrength * 2.0f);
-		position.z += sin((tick * pi / (18.0 * speed)) + (position.z + d2)*1.6 + (-position.x + d3)*1.6) * magnitude * (1.0f + rainStrength * 2.0f);
-		position.y += sin((tick * pi / (11.0 * speed)) + (position.z + d2) + (position.x + d3)) * (magnitude/3.0) * (1.0f + rainStrength * 2.0f);
-	}
-
-
-
-#endif
-	
-	
-
-#ifdef WAVING_LEAVES
-//Leaves//
-		
-	if (materialIDs == 3.0f && texcoord.t < 1.90 && texcoord.t > -1.0) {
-		float speed = 0.05;
-
-
-			  //lightWeight = max(0.0f, 1.0f - (lightWeight * 5.0f));
-		
-		float magnitude = (sin((position.y + position.x + tick * pi / ((28.0) * speed))) * 0.15 + 0.15) * 0.30 * lightWeight;
-			  magnitude *= grassWeight;
-			  magnitude *= lightWeight;
-		float d0 = sin(tick * pi / (112.0 * speed)) * 3.0 - 1.5;
-		float d1 = sin(tick * pi / (142.0 * speed)) * 3.0 - 1.5;
-		float d2 = sin(tick * pi / (132.0 * speed)) * 3.0 - 1.5;
-		float d3 = sin(tick * pi / (122.0 * speed)) * 3.0 - 1.5;
-		position.x += sin((tick * pi / (18.0 * speed)) + (-position.x + d0)*1.6 + (position.z + d1)*1.6) * magnitude * (1.0f + rainStrength * 1.0f);
-		position.z += sin((tick * pi / (17.0 * speed)) + (position.z + d2)*1.6 + (-position.x + d3)*1.6) * magnitude * (1.0f + rainStrength * 1.0f);
-		position.y += sin((tick * pi / (11.0 * speed)) + (position.z + d2) + (position.x + d3)) * (magnitude/2.0) * (1.0f + rainStrength * 1.0f);
-		
-	}
-	
-
-	//lower leaf movement
-	if (materialIDs == 3.0f) {
-		float speed = 0.075;
-
-
-		
-		float magnitude = (sin((tick * pi / ((28.0) * speed))) * 0.05 + 0.15) * 0.075 * lightWeight;
-			  magnitude *= 1.0f - grassWeight;
-			  magnitude *= lightWeight;
-		float d0 = sin(tick * pi / (122.0 * speed)) * 3.0 - 1.5;
-		float d1 = sin(tick * pi / (142.0 * speed)) * 3.0 - 1.5;
-		float d2 = sin(tick * pi / (162.0 * speed)) * 3.0 - 1.5;
-		float d3 = sin(tick * pi / (112.0 * speed)) * 3.0 - 1.5;
-		position.x += sin((tick * pi / (13.0 * speed)) + (position.x + d0)*0.9 + (position.z + d1)*0.9) * magnitude;
-		position.z += sin((tick * pi / (16.0 * speed)) + (position.z + d2)*0.9 + (position.x + d3)*0.9) * magnitude;
-		position.y += sin((tick * pi / (15.0 * speed)) + (position.z + d2) + (position.x + d3)) * (magnitude/1.0);
-	}
-
-#endif	
-
-	vec4 locposition = gl_ModelViewMatrix * gl_Vertex;
-	
-	distance = sqrt(locposition.x * locposition.x + locposition.y * locposition.y + locposition.z * locposition.z);
-
-	position.xyz -= cameraPosition.xyz;
-
 
 	gl_Position = gl_ProjectionMatrix * gbufferModelView * position;
 	
-
-
-
+	#ifdef POM
+	vec2 midcoord = (gl_TextureMatrix[0] *  mc_midTexCoord).st;
+	vec2 texcoordminusmid = texcoord.xy-midcoord;
+	vtexcoordam.pq  = abs(texcoordminusmid)*2;
+	vtexcoordam.st  = min(texcoord.xy ,midcoord-texcoordminusmid);
+	vtexcoord.xy    = sign(texcoordminusmid)*0.5+0.5;
 	
-
-	// float colorDiff = abs(color.r - color.g);
-	// 	  colorDiff += abs(color.r - color.b);
-	// 	  colorDiff += abs(color.g - color.b);
-
-	// if (colorDiff < 0.001f && mc_Entity.x != -1.0f && mc_Entity.x != 63 && mc_Entity.x != 68 && mc_Entity.x != 323) {
-
-	// 	float lum = color.r + color.g + color.b;
-	// 		  lum /= 3.0f;
-
-	// 	if (lum < 0.92f) {
-	// 		color.rgb = vec3(1.0f);
-	// 	}
-
-	// }	
-	
-	gl_FogFragCoord = gl_Position.z;
-	
-	
-	normal = normalize(gl_NormalMatrix * gl_Normal);
-	worldNormal = gl_Normal;
-
-	float texFix = -1.0f;
-
-	#ifdef TEXTURE_FIX
-	texFix = 1.0f;
-	#endif
-
-	//if(distance < 80.0f){	
-		if (gl_Normal.x > 0.5) {
-			//  1.0,  0.0,  0.0
-			tangent  = normalize(gl_NormalMatrix * vec3( 0.0,  0.0,  texFix));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0, -1.0,  0.0));
-			if (abs(materialIDs - 32.0f) < 0.1f)								//Optifine glowstone fix
-				color *= 1.75f;
-		} else if (gl_Normal.x < -0.5) {
-			// -1.0,  0.0,  0.0
-			tangent  = normalize(gl_NormalMatrix * vec3( 0.0,  0.0,  1.0));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0, -1.0,  0.0));
-			if (abs(materialIDs - 32.0f) < 0.1f)								//Optifine glowstone fix
-				color *= 1.75f;
-		} else if (gl_Normal.y > 0.5) {
-			//  0.0,  1.0,  0.0
-			tangent  = normalize(gl_NormalMatrix * vec3( 1.0,  0.0,  0.0));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0,  0.0,  1.0));
-		} else if (gl_Normal.y < -0.5) {
-			//  0.0, -1.0,  0.0
-			tangent  = normalize(gl_NormalMatrix * vec3( 1.0,  0.0,  0.0));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0,  0.0,  1.0));
-		} else if (gl_Normal.z > 0.5) {
-			//  0.0,  0.0,  1.0
-			tangent  = normalize(gl_NormalMatrix * vec3( 1.0,  0.0,  0.0));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0, -1.0,  0.0));
-		} else if (gl_Normal.z < -0.5) {
-			//  0.0,  0.0, -1.0
-			tangent  = normalize(gl_NormalMatrix * vec3( texFix,  0.0,  0.0));
-			binormal = normalize(gl_NormalMatrix * vec3( 0.0, -1.0,  0.0));
-		}
-	//}
-
+	vec3 tangent = normalize(gl_NormalMatrix * at_tangent.xyz);
+	vec3 binormal = normalize(gl_NormalMatrix * cross(at_tangent.xyz, gl_Normal.xyz) * at_tangent.w);
 	
 	tbnMatrix = mat3(tangent.x, binormal.x, normal.x,
-                     tangent.y, binormal.y, normal.y,
-                     tangent.z, binormal.z, normal.z);
-
-	vertexPos = gl_Vertex;	
+					 tangent.y, binormal.y, normal.y,
+					 tangent.z, binormal.z, normal.z);
+	
+	viewVector = normalize(tbnMatrix * (gl_ModelViewMatrix * gl_Vertex).xyz);
+	
+	dist = length(gl_ModelViewMatrix * gl_Vertex);
+	#endif
 }
