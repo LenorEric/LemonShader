@@ -294,7 +294,6 @@ float bayer2(vec2 a){
 	a = floor(a);
     return fract(dot(a,vec2(0.5,a.y*0.75)));
 }
-#define bayer4(a) (bayer2(0.5*(a))*0.25+bayer2(a))
 
 float densityAtPos(in vec3 pos){
 	pos /= 18.0;
@@ -330,8 +329,9 @@ float cloudPlane(in vec3 pos){
 return 1.0-pow(0.4,max(noise/tot-0.56-mult*mult*0.3+rainStrength*0.16,0.0)*2.2);
 }
 
+
 vec3 renderClouds(in vec3 pos, in vec3 color, const int cloudIT) {
-	float dither = bayer4(gl_FragCoord.xy);
+	float dither = bayer2(0.5*(gl_FragCoord.xy))*0.25+bayer2(gl_FragCoord.xy);
 
 	//setup
 	vec3 dV_view = pos.xyz;
