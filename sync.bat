@@ -1,0 +1,2 @@
+del "C:\Users\EC\Desktop\RE\minecraft 1.12.2\.minecraft\shaderpacks\LemonShader Dev\shaders\" /Q
+copy "C:\Users\EC\Desktop\DocBin\Program\C\LemonShader\shaders\" "C:\Users\EC\Desktop\RE\minecraft 1.12.2\.minecraft\shaderpacks\LemonShader Dev\shaders\"
