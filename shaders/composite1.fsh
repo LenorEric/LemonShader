@@ -265,7 +265,7 @@ float noise (in vec2 coord, in float offset)
 
 void 	DoNightEye(inout vec3 color) {			//Desaturates any color input at night, simulating the rods in the human eye
 	
-	float amount = 0.8f; 						//How much will the new desaturated and tinted image be mixed with the original image
+	float amount = 0.5f; 						//How much will the new desaturated and tinted image be mixed with the original image
 	vec3 rodColor = vec3(0.2f, 0.5f, 1.0f); 	//Cyan color that humans percieve when viewing extremely low light levels via rod cells in the eye
 	float colorDesat = dot(color, vec3(1.0f)); 	//Desaturated color
 	

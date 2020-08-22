@@ -163,7 +163,7 @@ float 	GetLightmapTorch(in vec2 coord) {			//Function that retrieves the lightma
 	//Apply inverse square law and normalize for natural light falloff
 	lightmap 		= clamp(lightmap * 1.22f, 0.0f, 1.0f);
 	lightmap 		= 1.0f - lightmap;
-	lightmap 		*= 5.6f;
+	lightmap 		*= 4.9f;
 	lightmap 		= 1.0f / pow((lightmap + 0.1f), 2.0f);
 	lightmap 		-= 0.03075f;
 
@@ -312,7 +312,7 @@ vec4 	ScreenSpaceFromWorldSpace(in vec4 worldPosition)
 
 
 void 	DoNightEye(inout vec3 color) {			//Desaturates any color input at night, simulating the rods in the human eye
-	
+	return; //Dangerous change.
 	float amount = 0.8f; 						//How much will the new desaturated and tinted image be mixed with the original image
 	vec3 rodColor = vec3(0.2f, 0.5f, 1.0f); 	//Cyan color that humans percieve when viewing extremely low light levels via rod cells in the eye
 	float colorDesat = dot(color, vec3(1.0f)); 	//Desaturated color
@@ -336,7 +336,7 @@ float 	LinearToExponentialDepth(in float linDepth)
 }
 
 void 	DoLowlightEye(inout vec3 color) {			//Desaturates any color input at night, simulating the rods in the human eye
-	
+	return; //Dangerous change.
 	float amount = 0.8f; 						//How much will the new desaturated and tinted image be mixed with the original image
 	vec3 rodColor = vec3(0.2f, 0.5f, 1.0f); 	//Cyan color that humans percieve when viewing extremely low light levels via rod cells in the eye
 	float colorDesat = dot(color, vec3(1.0f)); 	//Desaturated color
@@ -346,6 +346,7 @@ void 	DoLowlightEye(inout vec3 color) {			//Desaturates any color input at night
 }
 
 void 	FixLightFalloff(inout float lightmap) { //Fixes the ugly lightmap falloff and creates a nice linear one
+	return; //Dangerous change.
 	float additive = 5.35f;
 	float exponent = 40.0f;
 
@@ -827,6 +828,7 @@ float 	CalculateSunlightVisibility(inout SurfaceStruct surface, in ShadingStruct
 		return 0.0f;
 	}
 }
+
 
 float 	CalculateBouncedSunlight(in SurfaceStruct surface) {
 

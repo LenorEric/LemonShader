@@ -77,6 +77,9 @@
 		<Unit filename="C:/Users/EC/Desktop/DocBin/Program/C/LemonShader/main.c">
 			<Option target="LemonShader"/>
 		</Unit>
+		<Unit filename="C:/Users/EC/Desktop/DocBin/Program/C/LemonShader/test.cpp">
+			<Option target="LemonShader"/>
+		</Unit>
 		<Unit filename="C:/Users/EC/Desktop/DocBin/Program/C/LemonShader/CMakeLists.txt">
 			<Option virtualFolder="CMake Files\"/>
 		</Unit>
